@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>勞務報酬單線上填寫</title>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 20px; }
+    .container { max-width: 550px; background: white; margin: 0 auto; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    h2 { margin-top: 0; color: #333; text-align: center; }
+    .field { margin-bottom: 18px; }
+    label { display: block; font-weight: bold; margin-bottom: 6px; color: #444; font-size: 14px; }
+    input[type="text"], input[type="number"], input[type="file"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; }
+    input[readonly] { background-color: #e9ecef; color: #495057; cursor: not-allowed; }
+    .signature-box { border: 1px dashed #007bff; border-radius: 6px; background: #fafafa; position: relative; }
+    canvas { width: 100%; height: 160px; display: block; border-radius: 6px; }
+    .btn-clear { margin-top: 6px; background: #6c757d; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .btn-submit { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    .btn-submit:disabled { background: #ccc; }
+    .loading { display: none; text-align: center; color: #007bff; font-weight: bold; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>勞務報酬單</h2>
+  <form id="payForm">
+    <div class="field">
+      <label>專案名稱</label>
+      <input type="text" id="projectName" readonly>
+    </div>
+    <div class="field">
+      <label>報酬金額 (NTD)</label>
+      <input type="number" id="amount" readonly>
+    </div>
+    <div class="field">
+      <label>真實姓名</label>
+      <input type="text" id="name" placeholder="請輸入本名" required>
+    </div>
+    <div class="field">
+      <label>身分證字號</label>
+      <input type="text" id="idNumber" placeholder="請輸入 10 碼身分證字號" required>
+    </div>
+    <div class="field">
+      <label>戶籍地址</label>
+      <input type="text" id="address" placeholder="請填寫完整戶籍地址" required>
+    </div>
+    <div class="field">
+      <label>匯款帳戶 (銀行代碼與帳號)</label>
+      <input type="text" id="bankInfo" placeholder="例：822 中國信託 123456789" required>
+    </div>
+    <div class="field">
+      <label>上傳身分證正反面 (請拼成一張照片或上傳正面)</label>
+      <input type="file" id="idCard" accept="image/*" required>
+    </div>
+    <div class="field">
+      <label>領款人手寫簽名</label>
+      <div class="signature-box">
+        <canvas id="sigCanvas"></canvas>
+      </div>
+      <button type="button" class="btn-clear" id="clearBtn">重繪簽名</button>
+    </div>
+
+    <button type="submit" class="btn-submit" id="submitBtn">確認提交資料</button>
+    <div class="loading" id="loadingText">資料上傳中，請稍候...</div>
+  </form>
+</div>
+
+<script>
+  // 1. 替換為你的 Google Apps Script Web App 網址
+  const GAS_URL = "YOUR_GAS_WEB_APP_URL";
+
+  // 2. 解析網址參數 (自動填寫金額與專案)
+  const urlParams = new URLSearchParams(window.location.search);
+  document.getElementById('projectName').value = urlParams.get('project') || "合作行銷專案";
+  document.getElementById('amount').value = urlParams.get('amount') || "0";
+
+  // 3. 初始化 Canvas 簽名板
+  const canvas = document.getElementById('sigCanvas');
+  function resizeCanvas() {
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    canvas.getContext("2d").scale(ratio, ratio);
+  }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  const signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255, 255, 255)' });
+  document.getElementById('clearBtn').addEventListener('click', () => signaturePad.clear());
+
+  // 4. 轉 Base64 工具函式
+  const fileToBase64 = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
+
+  // 5. 提交表單處理
+  document.getElementById('payForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (signaturePad.isEmpty()) {
+      alert("請先完成領款人簽名！");
+      return;
+    }
+
+    const submitBtn = document.getElementById('submitBtn');
+    const loadingText = document.getElementById('loadingText');
+    submitBtn.disabled = true;
+    loadingText.style.display = 'block';
+
+    try {
+      const idCardFile = document.getElementById('idCard').files[0];
+      const idCardBase64 = await fileToBase64(idCardFile);
+
+      const payload = {
+        projectName: document.getElementById('projectName').value,
+        amount: document.getElementById('amount').value,
+        name: document.getElementById('name').value,
+        idNumber: document.getElementById('idNumber').value,
+        address: document.getElementById('address').value,
+        bankInfo: document.getElementById('bankInfo').value,
+        signature: signaturePad.toDataURL(),
+        idCard: idCardBase64,
+        idCardType: idCardFile.type,
+        idCardExt: idCardFile.name.split('.').pop()
+      };
+
+      await fetch(GAS_URL, {
+        method: "POST",
+        mode: "no-cors", // 跨網域送出
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      alert("勞報單已順利提交！感謝您的填寫。");
+      location.reload();
+    } catch (err) {
+      alert("提交失敗，請重試或聯繫發案方。");
+      console.error(err);
+      submitBtn.disabled = false;
+      loadingText.style.display = 'none';
+    }
+  });
+</script>
+
+</body>
+</html>
