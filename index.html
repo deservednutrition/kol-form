@@ -102,21 +102,44 @@
     document.getElementById('amount').value = "0";
   }
 
-  // 1. 台灣身分證邏輯檢查演算法
-  function checkID(id) {
-    id = id.trim().toUpperCase();
-    if (!/^[A-Z][12]\d{8}$/.test(id)) return false;
-    const letters = 'ABCDEFGHJKLMNPQRSTUVXYWZIO';
-    const code = [10, 11, 12, 13, 14, 15, 16, 17, 34, 18, 19, 20, 21, 22, 35, 23, 24, 25, 26, 27, 28, 29, 32, 30, 31, 33];
-    const letterIndex = letters.indexOf(id[0]);
-    const n = code[letterIndex];
-    let sum = Math.floor(n / 10) + (n % 10) * 9;
-    for (let i = 1; i < 9; i++) {
-      sum += parseInt(id[i]) * (9 - i);
-    }
-    sum += parseInt(id[9]);
-    return sum % 10 === 0;
+  // 台灣標準身分證字號驗證演算法 (回傳 true / false)
+function checkID(id) {
+  if (!id) return false;
+  
+  // 1. 去除前後空白並強制轉大寫
+  id = id.toString().trim().toUpperCase();
+
+  // 2. 基本格式檢查：第一個字大寫英文，第二個字 1 或 2，後面跟著 8 個數字 (總共 10 碼)
+  if (!/^[A-Z][12]\d{8}$/.test(id)) {
+    return false;
   }
+
+  // 3. 縣市英文字母對應代碼 (依據內政部戶政司規範編碼)
+  const cityCode = {
+    'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14, 'F': 15, 'G': 16, 'H': 17,
+    'J': 18, 'K': 19, 'L': 20, 'M': 21, 'N': 22, 'P': 23, 'Q': 24, 'R': 25,
+    'S': 26, 'T': 27, 'U': 28, 'V': 29, 'X': 30, 'Y': 31, 'W': 32, 'Z': 33,
+    'I': 34, 'O': 35
+  };
+
+  const code = cityCode[id[0]];
+  if (!code) return false;
+
+  // 4. 加權計算檢查碼
+  // 十位數 * 1 + 個位數 * 9
+  let sum = Math.floor(code / 10) * 1 + (code % 10) * 9;
+
+  // 第 2 至第 9 碼分別乘以 8, 7, 6, 5, 4, 3, 2, 1
+  for (let i = 1; i < 9; i++) {
+    sum += parseInt(id[i], 10) * (9 - i);
+  }
+
+  // 第 10 碼為檢查碼，權重為 1
+  sum += parseInt(id[9], 10) * 1;
+
+  // 5. 檢查是否能被 10 整除
+  return sum % 10 === 0;
+}
 
   // 2. 簽名板設定
   const canvas = document.getElementById('sigCanvas');
@@ -166,7 +189,7 @@
     // 驗證身分證號碼格式
     const idNum = document.getElementById('idNumber').value;
     if (!checkID(idNum)) {
-      alert("身分證字號格式或檢查碼，請重新核對！");
+      alert("身分證字號格式或檢查碼不正確，請重新核對！");
       return;
     }
 
