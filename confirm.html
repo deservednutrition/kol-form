@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>勞務報酬款項確認</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f8; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 90vh; }
+    .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 400px; width: 100%; text-align: center; }
+    h2 { color: #333; margin-top: 0; }
+    .amount-box { background: #eef5ff; color: #007bff; font-size: 24px; font-weight: bold; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .btn-confirm { width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .btn-confirm:disabled { background: #ccc; cursor: not-allowed; }
+    .success-box { display: none; }
+    .success-icon { font-size: 48px; color: #28a745; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <!-- 1. 未確認前顯示的表單區塊 -->
+  <div id="confirmBlock">
+    <h2 id="titleText">月份款項確認</h2>
+    <p>請核對本月勞務報酬分潤金額：</p>
+    <div class="amount-box" id="amountText">NT$ 0 元</div>
+    <p style="font-size: 13px; color: #666;">（個資與匯款帳號將沿用前期資料）</p>
+    <button class="btn-confirm" id="btnSubmit" onclick="submitConfirmation()">確認金額無誤並同意領取</button>
+  </div>
+
+  <!-- 2. 點擊後顯示的成功區塊 -->
+  <div id="successBlock" class="success-box">
+    <div class="success-icon">✓</div>
+    <h2 style="color: #28a745;">已完成核銷確認！</h2>
+    <p id="successDesc">感謝您的核對，款項將依約安排撥款。</p>
+  </div>
+</div>
+
+<script>
+  // ⚠️ 請替換為你正常的 Google Apps Script Web App 網址 (/exec 結尾)
+  const GAS_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec";
+
+  // 解析網址參數 (?id=xxx&amount=25000&month=2026-08)
+  const urlParams = new URLSearchParams(window.location.search);
+  const rowId = urlParams.get('id');
+  const amount = urlParams.get('amount') || "0";
+  const month = urlParams.get('month') || "";
+
+  if (month) document.getElementById('titleText').innerText = `${month} 月份款項確認`;
+  document.getElementById('amountText').innerText = `NT$ ${Number(amount).toLocaleString()} 元`;
+
+  async function submitConfirmation() {
+    if (!rowId) {
+      alert("無效的確認連結！");
+      return;
+    }
+
+    const btn = document.getElementById('btnSubmit');
+    btn.disabled = true;
+    btn.innerText = "處理中...";
+
+    try {
+      // 發送 POST 請求給 GAS 更新 Sheet 狀態
+      await fetch(GAS_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "confirm_monthly",
+          id: rowId
+        })
+      });
+
+      // 切換前端畫面為「完成」
+      document.getElementById('confirmBlock').style.display = 'none';
+      document.getElementById('successBlock').style.display = 'block';
+    } catch (err) {
+      alert("確認失敗，請重新整理頁面再試一次。");
+      btn.disabled = false;
+      btn.innerText = "確認金額無誤並同意領取";
+    }
+  }
+</script>
+
+</body>
+</html>
