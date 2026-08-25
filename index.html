@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>勞務報酬單填寫</title>
+  <title>勞務報酬單簽署</title>
   <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -26,7 +26,7 @@
 <body>
 
 <div class="container">
-  <h2>勞務報酬單</h2>
+  <h2>勞務報酬單簽署</h2>
   <form id="payForm">
     <div class="field">
       <label>專案名稱</label>
@@ -57,10 +57,9 @@
       <input type="text" id="bankInfo" placeholder="例：822 中國信託 123456789" required>
     </div>
     <div class="field">
-      <label>上傳身分證照片 (正反面併成一張上傳)</label>
+      <label>上傳身分證照片 (正反面或正面清晰照)</label>
       <input type="file" id="idCard" accept="image/*" required>
     </div>
-    <!-- 🌟 新增：銀行存摺照片 -->
     <div class="field">
       <label>上傳銀行存摺封面 / 數位帳戶截圖</label>
       <input type="file" id="bankPassbook" accept="image/*" required>
@@ -74,7 +73,7 @@
       <button type="button" class="btn-clear" id="clearBtn">重繪簽名</button>
     </div>
 
-    <button type="submit" class="btn-submit" id="submitBtn">確認提交資料</button>
+    <button type="submit" class="btn-submit" id="submitBtn">確認提交並簽署</button>
     <div class="loading" id="loadingText">資料處理與圖片上傳中，請稍候...</div>
   </form>
 </div>
@@ -83,65 +82,50 @@
   // ⚠️ 請填入你的 GAS Web App 網址 (/exec 結尾)
   const GAS_URL = "https://script.google.com/macros/s/AKfycbx182ZJ533PcoT9nDW6faH1EkJm-1xNL329YTYxd2_LRylIQ4eu-MeiD9Ffg28UdwCU/exec";
 
-  const FRONTEND_MAP = {
-    "mb-jun-15k": { name: "MetaBlock六月推廣", amount: 15000 },
-    "mb-jun-20k": { name: "MetaBlock六月推廣", amount: 20000 },
-    "fish-10k":   { name: "魚油開箱體驗專案", amount: 10000 },
-    "stress-8k":  { name: "好舒壓專案推廣", amount: 8000 }
-  };
-
+  // 1. 自動解析網址參數 (?id=GB-xxx&p=專案&a=金額&n=姓名&e=email)
   const urlParams = new URLSearchParams(window.location.search);
-  const code = urlParams.get('p');
-  const currentProject = FRONTEND_MAP[code];
-
-  if (currentProject) {
-    document.getElementById('projectName').value = currentProject.name;
-    document.getElementById('amount').value = currentProject.amount;
-  } else {
-    document.getElementById('projectName').value = "一般合作專案";
-    document.getElementById('amount').value = "0";
-  }
-
-  // 台灣標準身分證字號驗證演算法 (回傳 true / false)
-function checkID(id) {
-  if (!id) return false;
+  const recordId = urlParams.get('id') || "";
   
-  // 1. 去除前後空白並強制轉大寫
-  id = id.toString().trim().toUpperCase();
-
-  // 2. 基本格式檢查：第一個字大寫英文，第二個字 1 或 2，後面跟著 8 個數字 (總共 10 碼)
-  if (!/^[A-Z][12]\d{8}$/.test(id)) {
-    return false;
+  document.getElementById('projectName').value = urlParams.get('p') || "專案勞務報酬";
+  document.getElementById('amount').value = urlParams.get('a') || "0";
+  
+  const paramName = urlParams.get('n');
+  if (paramName) {
+    document.getElementById('name').value = paramName;
+    document.getElementById('name').readOnly = true;
+  }
+  
+  const paramEmail = urlParams.get('e');
+  if (paramEmail) {
+    document.getElementById('email').value = paramEmail;
+    document.getElementById('email').readOnly = true;
   }
 
-  // 3. 縣市英文字母對應代碼 (依據內政部戶政司規範編碼)
-  const cityCode = {
-    'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14, 'F': 15, 'G': 16, 'H': 17,
-    'J': 18, 'K': 19, 'L': 20, 'M': 21, 'N': 22, 'P': 23, 'Q': 24, 'R': 25,
-    'S': 26, 'T': 27, 'U': 28, 'V': 29, 'X': 30, 'Y': 31, 'W': 32, 'Z': 33,
-    'I': 34, 'O': 35
-  };
+  // 2. 身分證檢查演算法 (嚴謹校正版)
+  function checkID(id) {
+    if (!id) return false;
+    id = id.toString().trim().toUpperCase();
+    if (!/^[A-Z][12]\d{8}$/.test(id)) return false;
 
-  const code = cityCode[id[0]];
-  if (!code) return false;
+    const cityCode = {
+      'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14, 'F': 15, 'G': 16, 'H': 17,
+      'J': 18, 'K': 19, 'L': 20, 'M': 21, 'N': 22, 'P': 23, 'Q': 24, 'R': 25,
+      'S': 26, 'T': 27, 'U': 28, 'V': 29, 'X': 30, 'Y': 31, 'W': 32, 'Z': 33,
+      'I': 34, 'O': 35
+    };
 
-  // 4. 加權計算檢查碼
-  // 十位數 * 1 + 個位數 * 9
-  let sum = Math.floor(code / 10) * 1 + (code % 10) * 9;
+    const code = cityCode[id[0]];
+    if (!code) return false;
 
-  // 第 2 至第 9 碼分別乘以 8, 7, 6, 5, 4, 3, 2, 1
-  for (let i = 1; i < 9; i++) {
-    sum += parseInt(id[i], 10) * (9 - i);
+    let sum = Math.floor(code / 10) * 1 + (code % 10) * 9;
+    for (let i = 1; i < 9; i++) {
+      sum += parseInt(id[i], 10) * (9 - i);
+    }
+    sum += parseInt(id[9], 10) * 1;
+    return sum % 10 === 0;
   }
 
-  // 第 10 碼為檢查碼，權重為 1
-  sum += parseInt(id[9], 10) * 1;
-
-  // 5. 檢查是否能被 10 整除
-  return sum % 10 === 0;
-}
-
-  // 2. 簽名板設定
+  // 3. 簽名板設定
   const canvas = document.getElementById('sigCanvas');
   function resizeCanvas() {
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
@@ -155,7 +139,7 @@ function checkID(id) {
   const signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255, 255, 255)' });
   document.getElementById('clearBtn').addEventListener('click', () => signaturePad.clear());
 
-  // 3. 圖片壓縮設定
+  // 4. 圖片壓縮設定 (提升上傳速度)
   const compressAndToBase64 = (file, maxWidth = 1200, quality = 0.7) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -182,19 +166,21 @@ function checkID(id) {
     });
   };
 
-  // 4. 表單提交
+  // 5. 表單提交
   document.getElementById('payForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    // 驗證身分證號碼格式
-    const idNum = document.getElementById('idNumber').value;
-    if (!checkID(idNum)) {
-      alert("身分證字號格式或檢查碼不正確，請重新核對！");
+    const rawId = document.getElementById('idNumber').value;
+    const cleanId = rawId.trim().toUpperCase();
+
+    if (!checkID(cleanId)) {
+      alert("身分證字號格式不正確，請重新核對！");
+      document.getElementById('idNumber').focus();
       return;
     }
 
     if (signaturePad.isEmpty()) {
-      alert("請先完成領款人簽名！");
+      alert("請先完成手寫簽名！");
       return;
     }
 
@@ -207,17 +193,17 @@ function checkID(id) {
       const idCardFile = document.getElementById('idCard').files[0];
       const bankFile = document.getElementById('bankPassbook').files[0];
 
-      // 同時壓縮身分證與存摺圖片
       const idCardBase64 = await compressAndToBase64(idCardFile, 1200, 0.7);
       const bankBase64 = await compressAndToBase64(bankFile, 1200, 0.7);
 
       const payload = {
-        projectCode: code || "",
+        action: "submit_group_buy",
+        recordId: recordId,
         projectName: document.getElementById('projectName').value,
         amount: document.getElementById('amount').value,
         name: document.getElementById('name').value,
         email: document.getElementById('email').value,
-        idNumber: idNum.trim().toUpperCase(),
+        idNumber: cleanId,
         address: document.getElementById('address').value,
         bankInfo: document.getElementById('bankInfo').value,
         signature: signaturePad.toDataURL('image/png'),
@@ -236,7 +222,7 @@ function checkID(id) {
         body: JSON.stringify(payload)
       });
 
-      alert("勞報單已順利提交！感謝您的填寫。");
+      alert("勞務報酬單已順利簽署提交！感謝您的填寫。");
       location.reload();
     } catch (err) {
       alert("提交失敗，請重試或聯繫發案方。");
