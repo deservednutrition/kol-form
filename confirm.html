@@ -47,7 +47,9 @@
 
   if (month) document.getElementById('titleText').innerText = `${month} 月份款項確認`;
   document.getElementById('amountText').innerText = `NT$ ${Number(amount).toLocaleString()} 元`;
-
+if (!rowId) {
+  console.error("未在網址中偵測到 id 參數");
+}
   async function submitConfirmation() {
     if (!rowId) {
       alert("無效的確認連結！");
